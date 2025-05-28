@@ -29,9 +29,7 @@ async function initBrowser() {
                 '--disable-gpu'
             ],
             headless: true,
-            executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH === '0' 
-                ? path.join(process.cwd(), 'node_modules', 'playwright', '.local-browsers', 'chromium-*', 'chrome-linux', 'chrome')
-                : undefined
+            chromiumSandbox: false
         };
 
         console.log('Launching browser with options:', launchOptions);

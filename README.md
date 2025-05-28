@@ -17,7 +17,7 @@ NODE_ENV=development
 
 3. Install Playwright browsers:
 ```bash
-npx playwright install chromium
+npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/playwright npx playwright install chromium
 ```
 
 ## Development
@@ -32,7 +32,7 @@ npm run dev
 1. Create a new Web Service on Render.com
 2. Connect your GitHub repository
 3. Use the following settings:
-   - Build Command: `npm install && npx playwright install chromium`
+   - Build Command: `npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/playwright npx playwright install chromium`
    - Start Command: `npm start`
    - Environment Variables:
      - `NODE_ENV=production`
