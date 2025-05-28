@@ -16,7 +16,7 @@ let browser;
 // Initialize browser
 async function initBrowser() {
     try {
-        browser = await chromium.launch({
+        const launchOptions = {
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -26,8 +26,12 @@ async function initBrowser() {
                 '--no-zygote',
                 '--single-process',
                 '--disable-gpu'
-            ]
-        });
+            ],
+            executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined
+        };
+
+        console.log('Launching browser with options:', launchOptions);
+        browser = await chromium.launch(launchOptions);
         console.log('Browser initialized successfully');
     } catch (error) {
         console.error('Failed to initialize browser:', error);
