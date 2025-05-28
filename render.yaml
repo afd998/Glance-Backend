@@ -3,7 +3,7 @@ services:
     name: glance-backend
     env: node
     buildCommand: |
-      npm ci
+      npm install
       PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/playwright npx playwright install chromium
     startCommand: npm start
     envVars:
