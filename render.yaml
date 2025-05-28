@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: glance-backend
+    env: node
+    buildCommand: |
+      npm install
+      PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/.cache/playwright npx playwright install chromium
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/.cache/playwright 
