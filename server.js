@@ -1,6 +1,7 @@
 const express = require('express');
 const { chromium } = require('playwright');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -27,7 +28,10 @@ async function initBrowser() {
                 '--single-process',
                 '--disable-gpu'
             ],
-            headless: true
+            headless: true,
+            executablePath: process.env.PLAYWRIGHT_BROWSERS_PATH === '0' 
+                ? path.join(process.cwd(), 'node_modules', 'playwright', '.local-browsers', 'chromium-*', 'chrome-linux', 'chrome')
+                : undefined
         };
 
         console.log('Launching browser with options:', launchOptions);
