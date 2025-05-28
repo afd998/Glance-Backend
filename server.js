@@ -27,7 +27,7 @@ async function initBrowser() {
                 '--single-process',
                 '--disable-gpu'
             ],
-            executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined
+            headless: true
         };
 
         console.log('Launching browser with options:', launchOptions);
