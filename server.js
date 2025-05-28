@@ -15,9 +15,24 @@ let browser;
 
 // Initialize browser
 async function initBrowser() {
-    browser = await chromium.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    try {
+        browser = await chromium.launch({
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-gpu'
+            ]
+        });
+        console.log('Browser initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize browser:', error);
+        throw error;
+    }
 }
 
 // Scraping endpoint
@@ -98,6 +113,10 @@ app.get('/health', (req, res) => {
 // Start server
 app.listen(port, async () => {
     console.log(`Server running on port ${port}`);
-    await initBrowser();
-    console.log('Browser initialized');
+    try {
+        await initBrowser();
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
 }); 
