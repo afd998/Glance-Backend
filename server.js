@@ -92,7 +92,9 @@ async function fetchAndCacheData() {
             }, []);
 
             // For testing: truncate to 3 items
-            const testData = processedData.slice(0, 3);
+            const testData = processedData
+            //const testData = processedData.slice(0, 3);
+
             console.log(`Processing ${testData.length} items (truncated for testing)...`);
             
             // Process each item sequentially to get additional details
