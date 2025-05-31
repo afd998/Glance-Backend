@@ -11,11 +11,8 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Store browser instance and cached data
+// Store browser instance
 let browser;
-let cachedData = null;
-let lastFetchTime = null;
-const CACHE_DURATION = 5 * 60 * 1000; // 10 minutes in milliseconds
 
 // Initialize browser
 async function initBrowser() {
@@ -44,8 +41,8 @@ async function initBrowser() {
     }
 }
 
-// Function to fetch and cache data
-async function fetchAndCacheData() {
+// Function to fetch data
+async function fetchData() {
     try {
         console.log('Starting data fetch...');
         const context = await browser.newContext();
@@ -71,6 +68,10 @@ async function fetchAndCacheData() {
             // Wait for the main 25Live page to load
             await page.waitForSelector('div[ui-view="availability"]');
             
+            // Get cookies for authentication
+            const cookies = await context.cookies();
+            const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+            
             // Fetch the availability data
             const response = await page.goto('https://25live.collegenet.com/25live/data/northwestern/run/availability/availabilitydata.json?obj_cache_accl=0&start_dt=2025-05-23T00:00:00&comptype=availability_home&compsubject=location&page_size=100&space_favorite=T&include=closed+blackouts+pending+related+empty&caller=pro-AvailService.getData');
             const rawData = await response.json();
@@ -91,57 +92,38 @@ async function fetchAndCacheData() {
                 return [...acc, ...itemsWithSubject];
             }, []);
 
-            // For testing: truncate to 3 items
-            const testData = processedData
-            //const testData = processedData.slice(0, 3);
-
-            console.log(`Processing ${testData.length} items (truncated for testing)...`);
+            console.log(`Processing ${processedData.length} items...`);
             
-            // Process each item sequentially to get additional details
-            const finalData = [];
-            for (const item of testData) {
+            // Make all API requests in parallel using fetch
+            const detailPromises = processedData.map(async (item) => {
                 try {
                     console.log(`Fetching details for item ${item.itemId}...`);
-                    
-                    // Navigate to the item's details page
-                    const itemUrl = `https://25live.collegenet.com/pro/northwestern#!/home/event/${item.itemId}/details`;
-                    await page.goto(itemUrl);
-                    
-                    // Wait for the details element
-                    await page.waitForSelector(`#evdetail-${item.itemId} > evd-defn > div > div > div > div.c-objectDetails--columnOne`, { timeout: 30000 });
-                    
-                    // Add a small delay to ensure content is loaded
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    // Extract the data from the details page
-                    const itemDetails = await page.evaluate(() => {
-                        return {
-                            tasks: "working" // Replace with actual data extraction
-                        };
-                    });
-                    
-                    finalData.push({
+                    const itemDetailsResponse = await fetch(
+                        `https://25live.collegenet.com/25live/data/northwestern/run/event/detail/evdetail.json?event_id=${item.itemId}&caller=pro-EvdetailDao.get`,
+                        {
+                            headers: {
+                                'Cookie': cookieString
+                            }
+                        }
+                    );
+                    const itemDetails = await itemDetailsResponse.json();
+                    return {
                         ...item,
-                        itemDetails
-                    });
-                    
-                    // Add a small delay between items to prevent overwhelming the server
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
+                        itemDetails: itemDetails.evdetail
+                    };
                 } catch (error) {
                     console.error(`Error processing item ${item.itemId}:`, error.message);
-                    finalData.push({
+                    return {
                         ...item,
                         itemDetails: null,
                         error: error.message
-                    });
+                    };
                 }
-            }
+            });
 
-            // Update cache with the complete data
-            cachedData = finalData;
-            lastFetchTime = Date.now();
-            console.log('Data fetch and cache update complete');
+            // Wait for all requests to complete
+            const finalData = await Promise.all(detailPromises);
+            return finalData;
             
         } finally {
             await context.close();
@@ -153,7 +135,7 @@ async function fetchAndCacheData() {
             console.log('Browser was closed, reinitializing...');
             await initBrowser();
             // Retry the fetch
-            return fetchAndCacheData();
+            return fetchData();
         }
         throw error;
     }
@@ -162,16 +144,10 @@ async function fetchAndCacheData() {
 // Endpoint to get data
 app.get('/api/availability', async (req, res) => {
     try {
-        // Check if we need to refresh the cache
-        if (!cachedData || !lastFetchTime || (Date.now() - lastFetchTime) > CACHE_DURATION) {
-            console.log('Cache expired or missing, fetching new data...');
-            await fetchAndCacheData();
-        }
-        
+        const data = await fetchData();
         res.json({ 
             success: true, 
-            data: cachedData,
-            lastUpdated: lastFetchTime
+            data: data
         });
     } catch (error) {
         console.error('Error serving data:', error);
@@ -182,29 +158,16 @@ app.get('/api/availability', async (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({ 
-        status: 'ok',
-        lastDataFetch: lastFetchTime ? new Date(lastFetchTime).toISOString() : null
+        status: 'ok'
     });
 });
 
-// Start server and initial data fetch
+// Start server
 async function startServer() {
     try {
         console.log('Initializing browser...');
         await initBrowser();
         console.log('Browser initialized successfully');
-        
-        // Initial data fetch
-        await fetchAndCacheData();
-        
-        // Set up periodic data refresh
-        setInterval(async () => {
-            try {
-                await fetchAndCacheData();
-            } catch (error) {
-                console.error('Error in periodic data refresh:', error);
-            }
-        }, CACHE_DURATION);
         
         app.listen(port, () => {
             console.log(`Server running on port ${port}`);
