@@ -1,7 +1,6 @@
 const express = require('express');
 const { chromium } = require('playwright');
 const cors = require('cors');
-const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -73,7 +72,11 @@ async function fetchData() {
             const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
             
             // Fetch the availability data
-            const response = await page.goto('https://25live.collegenet.com/25live/data/northwestern/run/availability/availabilitydata.json?obj_cache_accl=0&start_dt=2025-05-23T00:00:00&comptype=availability_home&compsubject=location&page_size=100&space_favorite=T&include=closed+blackouts+pending+related+empty&caller=pro-AvailService.getData');
+            const response = await fetch('https://25live.collegenet.com/25live/data/northwestern/run/availability/availabilitydata.json?obj_cache_accl=0&start_dt=2025-05-23T00:00:00&comptype=availability_home&compsubject=location&page_size=100&space_favorite=T&include=closed+blackouts+pending+related+empty&caller=pro-AvailService.getData', {
+                headers: {
+                    'Cookie': cookieString
+                }
+            });
             const rawData = await response.json();
             
             // Process the data
