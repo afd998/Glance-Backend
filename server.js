@@ -2,6 +2,10 @@ const express = require('express');
 const { chromium } = require('playwright');
 const cors = require('cors');
 require('dotenv').config();
+const axios = require('axios');
+
+
+app.use(cors());
 
 const app = express();
 const port = process.env.PORT || 3002;
@@ -79,41 +83,29 @@ async function fetchData(startDate) {
             });
             const rawData = await response.json();
             
-            // Log the structure of the raw data
-            console.log('\n=== Raw Data Structure ===');
-            console.log('Top level keys:', Object.keys(rawData));
+           
+           
             if (rawData.subjects) {
-                console.log('\nFirst subject structure:');
-                const firstSubject = rawData.subjects[0];
-                console.log('Subject keys:', Object.keys(firstSubject));
-                if (firstSubject.items) {
-                    console.log('\nFirst item in first subject:');
-                    console.log('Item keys:', Object.keys(firstSubject.items[0]));
-                }
-            }
-            console.log('\n=== End Raw Data Structure ===\n');
             
+                const firstSubject = rawData.subjects[0];
+               
+              
+            }
+          
             // Check if we have valid data
             if (!rawData || !rawData.subjects) {
                 throw new Error('Invalid data received from API: ' + JSON.stringify(rawData));
             }
-            
-            // Add detailed logging of the subjects array
-            console.log('\n=== Subjects Array Structure ===');
-            console.log('Number of subjects:', rawData.subjects.length);
-            console.log('First few subjects:', JSON.stringify(rawData.subjects.slice(0, 3), null, 2));
+           
             
             // Log each subject's structure
             rawData.subjects.forEach((subject, index) => {
-                console.log(`\nSubject ${index}:`);
-                console.log('Keys:', Object.keys(subject));
-                console.log('Has items:', !!subject.items);
-                console.log('Items type:', subject.items ? typeof subject.items : 'undefined');
+               
                 if (subject.items) {
                     console.log('Items length:', subject.items.length);
                 }
             });
-            console.log('=== End Subjects Array Structure ===\n');
+           
             
             // Process the data
             const processedData = rawData.subjects
@@ -132,8 +124,7 @@ async function fetchData(startDate) {
                     }));
                     return [...acc, ...itemsWithSubject];
                 }, []);
-
-            console.log(`Processing ${processedData.length} items...`);
+  console.log(`Processing ${processedData.length} items...`);
             
             // Make all API requests in parallel using fetch
             const detailPromises = processedData.map(async (item) => {
@@ -238,3 +229,71 @@ async function startServer() {
 }
 
 startServer(); 
+
+
+
+
+// Proxy endpoint for faculty directory
+app.get('/api/faculty', async (req, res) => {
+  try {
+    // First, get the first page to determine total results
+    const firstPageResponse = await axios.get('https://www.kellogg.northwestern.edu/api/facultylisting', {
+      params: {
+        listingId: 'e9eb7e22-b0ce-4907-be8b-9e73c3347c55',
+        pageId: 'ec51f47e-4843-4eb7-a5d5-15ec09593247',
+        page: 1
+      }
+    });
+    
+    const totalResults = firstPageResponse.data.totalResults;
+    const perPage = firstPageResponse.data.results.length;
+    const totalPages = Math.ceil(totalResults / perPage);
+    
+    // Fetch all pages in parallel
+    const pagePromises = [];
+    for (let page = 1; page <= totalPages; page++) {
+      pagePromises.push(
+        axios.get('https://www.kellogg.northwestern.edu/api/facultylisting', {
+          params: {
+            listingId: 'e9eb7e22-b0ce-4907-be8b-9e73c3347c55',
+            pageId: 'ec51f47e-4843-4eb7-a5d5-15ec09593247',
+            page
+          }
+        })
+      );
+    }
+    
+    const pageResponses = await Promise.all(pagePromises);
+    
+    // Combine all results
+    const allFaculty = pageResponses.flatMap(response => response.data.results);
+    
+    // Transform the data to match our expected format
+    const faculty = allFaculty.map(member => ({
+      name: member.name,
+      title: member.title,
+      imageUrl: member.images?.desktop1X ? new URL(member.images.desktop1X, 'https://www.kellogg.northwestern.edu').toString() : null,
+      department: member.title.split(' of ')[1] || null, // Extract department from title
+      bioUrl: member.url ? new URL(member.url, 'https://www.kellogg.northwestern.edu').toString() : null // Use the URL directly since it's already a full URL
+    }));
+    
+    res.json(faculty);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch faculty directory' });
+  }
+});
+
+// Proxy endpoint for events
+app.get('/api/events', async (req, res) => {
+  try {
+    const response = await axios.get('https://www.kellogg.northwestern.edu/api/events');
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+const PORT = process.env.PORT || 3003;
+app.listen(PORT, () => {
+  console.log(`[Proxy] Server running on port ${PORT}`);
+}); 
