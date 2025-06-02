@@ -4,7 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3002;
 
 // Middleware
 app.use(cors());
@@ -41,7 +41,7 @@ async function initBrowser() {
 }
 
 // Function to fetch data
-async function fetchData() {
+async function fetchData(startDate) {
     try {
         console.log('Starting data fetch...');
         const context = await browser.newContext();
@@ -71,29 +71,67 @@ async function fetchData() {
             const cookies = await context.cookies();
             const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
             
-            // Fetch the availability data
-            const response = await fetch('https://25live.collegenet.com/25live/data/northwestern/run/availability/availabilitydata.json?obj_cache_accl=0&start_dt=2025-05-23T00:00:00&comptype=availability_home&compsubject=location&page_size=100&space_favorite=T&include=closed+blackouts+pending+related+empty&caller=pro-AvailService.getData', {
+            // Fetch the availability data with the provided date
+            const response = await fetch(`https://25live.collegenet.com/25live/data/northwestern/run/availability/availabilitydata.json?obj_cache_accl=0&start_dt=${startDate}&comptype=availability_home&compsubject=location&page_size=100&space_favorite=T&include=closed+blackouts+pending+related+empty&caller=pro-AvailService.getData`, {
                 headers: {
                     'Cookie': cookieString
                 }
             });
             const rawData = await response.json();
             
+            // Log the structure of the raw data
+            console.log('\n=== Raw Data Structure ===');
+            console.log('Top level keys:', Object.keys(rawData));
+            if (rawData.subjects) {
+                console.log('\nFirst subject structure:');
+                const firstSubject = rawData.subjects[0];
+                console.log('Subject keys:', Object.keys(firstSubject));
+                if (firstSubject.items) {
+                    console.log('\nFirst item in first subject:');
+                    console.log('Item keys:', Object.keys(firstSubject.items[0]));
+                }
+            }
+            console.log('\n=== End Raw Data Structure ===\n');
+            
+            // Check if we have valid data
+            if (!rawData || !rawData.subjects) {
+                throw new Error('Invalid data received from API: ' + JSON.stringify(rawData));
+            }
+            
+            // Add detailed logging of the subjects array
+            console.log('\n=== Subjects Array Structure ===');
+            console.log('Number of subjects:', rawData.subjects.length);
+            console.log('First few subjects:', JSON.stringify(rawData.subjects.slice(0, 3), null, 2));
+            
+            // Log each subject's structure
+            rawData.subjects.forEach((subject, index) => {
+                console.log(`\nSubject ${index}:`);
+                console.log('Keys:', Object.keys(subject));
+                console.log('Has items:', !!subject.items);
+                console.log('Items type:', subject.items ? typeof subject.items : 'undefined');
+                if (subject.items) {
+                    console.log('Items length:', subject.items.length);
+                }
+            });
+            console.log('=== End Subjects Array Structure ===\n');
+            
             // Process the data
-            const processedData = rawData.subjects.reduce((acc, subject) => {
-                const subjectData = Object.entries(subject).reduce((obj, [key, value]) => {
-                    if (key !== 'items') {
-                        obj[`subject_${key}`] = value;
-                    }
-                    return obj;
-                }, {});
-                
-                const itemsWithSubject = subject.items.map(item => ({
-                    ...item,
-                    ...subjectData
-                }));
-                return [...acc, ...itemsWithSubject];
-            }, []);
+            const processedData = rawData.subjects
+                .filter(subject => subject.items && Array.isArray(subject.items)) // Only keep subjects with items array
+                .reduce((acc, subject) => {
+                    const subjectData = Object.entries(subject).reduce((obj, [key, value]) => {
+                        if (key !== 'items') {
+                            obj[`subject_${key}`] = value;
+                        }
+                        return obj;
+                    }, {});
+                    
+                    const itemsWithSubject = subject.items.map(item => ({
+                        ...item,
+                        ...subjectData
+                    }));
+                    return [...acc, ...itemsWithSubject];
+                }, []);
 
             console.log(`Processing ${processedData.length} items...`);
             
@@ -110,22 +148,37 @@ async function fetchData() {
                         }
                     );
                     const itemDetails = await itemDetailsResponse.json();
-                    return {
+                    const eventWithUrl = {
                         ...item,
-                        itemDetails: itemDetails.evdetail
+                        itemDetails: itemDetails.evdetail,
+                        eventUrl: `https://25live.collegenet.com/pro/northwestern#!/home/event/${item.itemId}/details`
                     };
+                    console.log('Event with URL:', JSON.stringify(eventWithUrl, null, 2));
+                    return eventWithUrl;
                 } catch (error) {
                     console.error(`Error processing item ${item.itemId}:`, error.message);
-                    return {
+                    const eventWithUrl = {
                         ...item,
                         itemDetails: null,
+                        eventUrl: `https://25live.collegenet.com/pro/northwestern#!/home/event/${item.itemId}/details`,
                         error: error.message
                     };
+                    console.log('Event with URL (error case):', JSON.stringify(eventWithUrl, null, 2));
+                    return eventWithUrl;
                 }
             });
 
             // Wait for all requests to complete
             const finalData = await Promise.all(detailPromises);
+            
+            // Log the final data structure
+            console.log('\n=== Final Data Structure ===');
+            console.log('Number of events:', finalData.length);
+            if (finalData.length > 0) {
+                console.log('First event structure:', JSON.stringify(finalData[0], null, 2));
+            }
+            console.log('=== End Final Data Structure ===\n');
+            
             return finalData;
             
         } finally {
@@ -138,7 +191,7 @@ async function fetchData() {
             console.log('Browser was closed, reinitializing...');
             await initBrowser();
             // Retry the fetch
-            return fetchData();
+            return fetchData(startDate);
         }
         throw error;
     }
@@ -147,7 +200,10 @@ async function fetchData() {
 // Endpoint to get data
 app.get('/api/availability', async (req, res) => {
     try {
-        const data = await fetchData();
+        // Get date from query parameter, default to 2025-05-23 if not provided
+        const startDate = req.query.date || '2025-05-23T00:00:00';
+        console.log('Fetching data for date:', startDate);
+        const data = await fetchData(startDate);
         res.json({ 
             success: true, 
             data: data
