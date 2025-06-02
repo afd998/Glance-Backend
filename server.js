@@ -2,10 +2,10 @@ const express = require('express');
 const { chromium } = require('playwright');
 const cors = require('cors');
 require('dotenv').config();
-const axios = require('axios');
 
 
-app.use(cors());
+
+
 
 const app = express();
 const port = process.env.PORT || 3002;
@@ -237,36 +237,33 @@ startServer();
 app.get('/api/faculty', async (req, res) => {
   try {
     // First, get the first page to determine total results
-    const firstPageResponse = await axios.get('https://www.kellogg.northwestern.edu/api/facultylisting', {
-      params: {
-        listingId: 'e9eb7e22-b0ce-4907-be8b-9e73c3347c55',
-        pageId: 'ec51f47e-4843-4eb7-a5d5-15ec09593247',
-        page: 1
-      }
-    });
+    const firstPageResponse = await fetch('https://www.kellogg.northwestern.edu/api/facultylisting?' + new URLSearchParams({
+      listingId: 'e9eb7e22-b0ce-4907-be8b-9e73c3347c55',
+      pageId: 'ec51f47e-4843-4eb7-a5d5-15ec09593247',
+      page: 1
+    }));
     
-    const totalResults = firstPageResponse.data.totalResults;
-    const perPage = firstPageResponse.data.results.length;
+    const firstPageData = await firstPageResponse.json();
+    const totalResults = firstPageData.totalResults;
+    const perPage = firstPageData.results.length;
     const totalPages = Math.ceil(totalResults / perPage);
     
     // Fetch all pages in parallel
     const pagePromises = [];
     for (let page = 1; page <= totalPages; page++) {
       pagePromises.push(
-        axios.get('https://www.kellogg.northwestern.edu/api/facultylisting', {
-          params: {
-            listingId: 'e9eb7e22-b0ce-4907-be8b-9e73c3347c55',
-            pageId: 'ec51f47e-4843-4eb7-a5d5-15ec09593247',
-            page
-          }
-        })
+        fetch('https://www.kellogg.northwestern.edu/api/facultylisting?' + new URLSearchParams({
+          listingId: 'e9eb7e22-b0ce-4907-be8b-9e73c3347c55',
+          pageId: 'ec51f47e-4843-4eb7-a5d5-15ec09593247',
+          page
+        })).then(res => res.json())
       );
     }
     
     const pageResponses = await Promise.all(pagePromises);
     
     // Combine all results
-    const allFaculty = pageResponses.flatMap(response => response.data.results);
+    const allFaculty = pageResponses.flatMap(response => response.results);
     
     // Transform the data to match our expected format
     const faculty = allFaculty.map(member => ({
@@ -279,6 +276,7 @@ app.get('/api/faculty', async (req, res) => {
     
     res.json(faculty);
   } catch (error) {
+    console.error('Faculty fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch faculty directory' });
   }
 });
@@ -286,14 +284,12 @@ app.get('/api/faculty', async (req, res) => {
 // Proxy endpoint for events
 app.get('/api/events', async (req, res) => {
   try {
-    const response = await axios.get('https://www.kellogg.northwestern.edu/api/events');
-    res.json(response.data);
+    const response = await fetch('https://www.kellogg.northwestern.edu/api/events');
+    const data = await response.json();
+    res.json(data);
   } catch (error) {
+    console.error('Events fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
   }
 });
 
-const PORT = process.env.PORT || 3003;
-app.listen(PORT, () => {
-  console.log(`[Proxy] Server running on port ${PORT}`);
-}); 
