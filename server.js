@@ -162,14 +162,6 @@ async function fetchData(startDate) {
             // Wait for all requests to complete
             const finalData = await Promise.all(detailPromises);
             
-            // Log the final data structure
-            console.log('\n=== Final Data Structure ===');
-            console.log('Number of events:', finalData.length);
-            if (finalData.length > 0) {
-                console.log('First event structure:', JSON.stringify(finalData[0], null, 2));
-            }
-            console.log('=== End Final Data Structure ===\n');
-            
             return finalData;
             
         } finally {
